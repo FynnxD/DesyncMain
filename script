@@ -1,0 +1,414 @@
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local VIM = game:GetService("VirtualInputManager")
+local LP = Players.LocalPlayer
+
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "STABLE TEST BUILD",
+    LoadingTitle = "Debug Version",
+    LoadingSubtitle = "Full Feature Build",
+    ConfigurationSaving = { Enabled = false }
+})
+
+local ESPTab  = Window:CreateTab("ESP", 4483362458)
+local AimTab  = Window:CreateTab("Aimbot", 4483362458)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+
+local Settings = {
+    ESP = false,
+    Aimbot = false,
+    Triggerbot = false,
+
+    TeamCheck = true,
+    FriendCheck = true,
+
+    FOV = 150,
+    Smooth = 0.2,
+
+    SpeedEnabled = false,
+    JumpEnabled = false,
+    Speed = 16,
+    Jump = 50,
+
+    Noclip = false,
+    HitboxEnabled = false
+}
+
+local function IsValidTarget(plr)
+    if not plr or plr == LP then return false end
+    if not plr.Character then return false end
+    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+
+    if Settings.TeamCheck and plr.Team and LP.Team and plr.Team == LP.Team then
+        return false
+    end
+
+    if Settings.FriendCheck then
+        local ok, isFriend = pcall(function()
+            return LP:IsFriendsWith(plr.UserId)
+        end)
+        if ok and isFriend then
+            return false
+        end
+    end
+
+    return true
+end
+
+local Highlights = {}
+
+local function RemoveESP(plr)
+    if Highlights[plr] then
+        Highlights[plr]:Destroy()
+        Highlights[plr] = nil
+    end
+end
+
+local function AddESP(plr)
+    if not Settings.ESP or not IsValidTarget(plr) or not plr.Character then
+        RemoveESP(plr)
+        return
+    end
+
+    RemoveESP(plr)
+
+    local h = Instance.new("Highlight")
+    h.Adornee = plr.Character
+    h.Parent = plr.Character
+    h.FillColor = Color3.fromRGB(255,0,0)
+    h.OutlineColor = Color3.fromRGB(255,255,255)
+    h.FillTransparency = 0.35
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    Highlights[plr] = h
+end
+
+local function TrackPlayer(plr)
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.15)
+        AddESP(plr)
+    end)
+end
+
+for _,plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LP then
+        TrackPlayer(plr)
+        if plr.Character then
+            AddESP(plr)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= LP then
+        TrackPlayer(plr)
+    end
+end)
+
+Players.PlayerRemoving:Connect(RemoveESP)
+
+local Circle = Drawing.new("Circle")
+Circle.Color = Color3.new(1,1,1)
+Circle.Thickness = 2
+Circle.NumSides = 64
+Circle.Filled = false
+Circle.Visible = false
+
+local function Center()
+    local v = Camera.ViewportSize
+    return Vector2.new(v.X/2, v.Y/2)
+end
+
+local function GetTarget()
+    local best, dist = nil, Settings.FOV
+    local c = Center()
+
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if IsValidTarget(plr) and plr.Character:FindFirstChild("Head") then
+            local pos, on = Camera:WorldToViewportPoint(plr.Character.Head.Position)
+            if on then
+                local m = (Vector2.new(pos.X,pos.Y) - c).Magnitude
+                if m < dist then
+                    dist = m
+                    best = plr.Character.Head
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function ApplyMovement()
+    local char = LP.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    hum.UseJumpPower = true
+    hum.WalkSpeed = Settings.SpeedEnabled and Settings.Speed or 16
+    hum.JumpPower = Settings.JumpEnabled and Settings.Jump or 150
+end
+
+LP.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    ApplyMovement()
+end)
+
+local function TriggerCheck()
+    local c = Center()
+    local ray = Camera:ViewportPointToRay(c.X, c.Y)
+
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {LP.Character}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+    if not result then return false end
+
+    local model = result.Instance:FindFirstAncestorOfClass("Model")
+    local hum = model and model:FindFirstChildOfClass("Humanoid")
+    local plr = model and Players:GetPlayerFromCharacter(model)
+
+    return hum and plr and IsValidTarget(plr)
+end
+
+local WBText = Drawing.new("Text")
+WBText.Size = 18
+WBText.Center = true
+WBText.Outline = true
+WBText.Font = 2
+WBText.Visible = true
+WBText.Text = "WB: N/A"
+WBText.Color = Color3.fromRGB(255,255,255)
+
+local function GetWallInfo(targetPart)
+    if not targetPart then return true, 0 end
+
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {LP.Character}
+
+    local result = workspace:Raycast(origin, direction, params)
+    if not result then
+        return false, 0
+    end
+
+    local hitInstance = result.Instance
+    local distance = (result.Position - origin).Magnitude
+
+    local isWall = not hitInstance:IsDescendantOf(targetPart.Parent)
+    return isWall, distance
+end
+
+local OriginalSizes = {}
+
+local function SetHitbox(plr, size)
+    if not plr.Character then return end
+    local parts = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
+    for _, partName in ipairs(parts) do
+        local part = plr.Character:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then
+            if not OriginalSizes[plr] then OriginalSizes[plr] = {} end
+            if not OriginalSizes[plr][partName] then
+                OriginalSizes[plr][partName] = part.Size
+            end
+            part.Size = OriginalSizes[plr][partName] * size
+        end
+    end
+end
+
+local function ResetHitbox(plr)
+    if not plr.Character or not OriginalSizes[plr] then return end
+    for partName, size in pairs(OriginalSizes[plr]) do
+        local part = plr.Character:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then
+            part.Size = size
+        end
+    end
+    OriginalSizes[plr] = nil
+end
+
+local function ApplyHitboxes(enabled, size)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and IsValidTarget(plr) then
+            if enabled then
+                SetHitbox(plr, size)
+            else
+                ResetHitbox(plr)
+            end
+            plr.CharacterAdded:Connect(function()
+                task.wait(0.2)
+                if enabled then
+                    SetHitbox(plr, size)
+                else
+                    ResetHitbox(plr)
+                end
+            end)
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    Circle.Position = Center()
+    Circle.Radius = Settings.FOV
+    Circle.Visible = Settings.Aimbot
+
+    if Settings.Aimbot and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local t = GetTarget()
+        if t then
+            Camera.CFrame = Camera.CFrame:Lerp(
+                CFrame.new(Camera.CFrame.Position, t.Position),
+                Settings.Smooth
+            )
+        end
+    end
+
+    if Settings.Triggerbot and TriggerCheck() then
+        VIM:SendMouseButtonEvent(0,0,0,true,game,0)
+        task.wait(0.01)
+        VIM:SendMouseButtonEvent(0,0,0,false,game,0)
+    end
+
+    if Settings.Noclip and LP.Character then
+        for _,p in ipairs(LP.Character:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.CanCollide = false
+            end
+        end
+    end
+
+    ApplyMovement()
+
+    local target = GetTarget()
+    WBText.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2 + 40)
+    if target then
+        local wall, dist = GetWallInfo(target)
+        if wall then
+            WBText.Text = "WB: NO | Dist: "..math.floor(dist).." studs"
+            WBText.Color = Color3.fromRGB(255,80,80)
+        else
+            WBText.Text = "WB: YES"
+            WBText.Color = Color3.fromRGB(80,255,80)
+        end
+    else
+        WBText.Text = "WB: N/A"
+        WBText.Color = Color3.fromRGB(255,255,255)
+    end
+end)
+
+ESPTab:CreateToggle({
+    Name = "ESP / Chams",
+    Callback = function(v)
+        Settings.ESP = v
+        for _,plr in ipairs(Players:GetPlayers()) do
+            AddESP(plr)
+        end
+    end
+})
+
+AimTab:CreateToggle({
+    Name = "Aimbot (Hold RMB)",
+    Callback = function(v)
+        Settings.Aimbot = v
+    end
+})
+
+AimTab:CreateToggle({
+    Name = "Triggerbot",
+    Callback = function(v)
+        Settings.Triggerbot = v
+    end
+})
+
+AimTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = true,
+    Callback = function(v)
+        Settings.TeamCheck = v
+    end
+})
+
+AimTab:CreateToggle({
+    Name = "Friend Check",
+    CurrentValue = true,
+    Callback = function(v)
+        Settings.FriendCheck = v
+    end
+})
+
+AimTab:CreateSlider({
+    Name = "FOV",
+    Range = {50,400},
+    Increment = 1,
+    CurrentValue = 150,
+    Callback = function(v)
+        Settings.FOV = v
+    end
+})
+
+AimTab:CreateSlider({
+    Name = "Smoothing",
+    Range = {0.05,0.5},
+    Increment = 0.05,
+    CurrentValue = 0.2,
+    Callback = function(v)
+        Settings.Smooth = v
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Speed Boost",
+    Callback = function(v)
+        Settings.SpeedEnabled = v
+    end
+})
+
+MiscTab:CreateSlider({
+    Name = "Speed",
+    Range = {16,250},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(v)
+        Settings.Speed = v
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Jump Boost",
+    Callback = function(v)
+        Settings.JumpEnabled = v
+    end
+})
+
+MiscTab:CreateSlider({
+    Name = "Jump Power",
+    Range = {50,150},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(v)
+        Settings.Jump = v
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Noclip",
+    Callback = function(v)
+        Settings.Noclip = v
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Hitbox Enlargement",
+    Callback = function(v)
+        Settings.HitboxEnabled = v
+        ApplyHitboxes(v, 2)
+    end
+})
