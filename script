@@ -6,12 +6,15 @@ local Camera = workspace.CurrentCamera
 local VIM = game:GetService("VirtualInputManager")
 local LP = Players.LocalPlayer
 
+-------------------------------------------------
+-- RAYFIELD
+-------------------------------------------------
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "STABLE TEST BUILD",
-    LoadingTitle = "Debug Version",
-    LoadingSubtitle = "Full Feature Build",
+    Name = "HyroxaVersion0.9.9",
+    LoadingTitle = "Beta0.9.9",
+    LoadingSubtitle = "FirstBetaVersion",
     ConfigurationSaving = { Enabled = false }
 })
 
@@ -19,6 +22,9 @@ local ESPTab  = Window:CreateTab("ESP", 4483362458)
 local AimTab  = Window:CreateTab("Aimbot", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
+-------------------------------------------------
+-- SETTINGS
+-------------------------------------------------
 local Settings = {
     ESP = false,
     Aimbot = false,
@@ -39,9 +45,13 @@ local Settings = {
     HitboxEnabled = false
 }
 
+-------------------------------------------------
+-- TARGET CHECK
+-------------------------------------------------
 local function IsValidTarget(plr)
     if not plr or plr == LP then return false end
     if not plr.Character then return false end
+
     local hum = plr.Character:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return false end
 
@@ -61,6 +71,9 @@ local function IsValidTarget(plr)
     return true
 end
 
+-------------------------------------------------
+-- ESP
+-------------------------------------------------
 local Highlights = {}
 
 local function RemoveESP(plr)
@@ -71,7 +84,7 @@ local function RemoveESP(plr)
 end
 
 local function AddESP(plr)
-    if not Settings.ESP or not IsValidTarget(plr) or not plr.Character then
+    if not Settings.ESP or not IsValidTarget(plr) then
         RemoveESP(plr)
         return
     end
@@ -88,7 +101,7 @@ local function AddESP(plr)
     Highlights[plr] = h
 end
 
-local function TrackPlayer(plr)
+local function Track(plr)
     plr.CharacterAdded:Connect(function()
         task.wait(0.15)
         AddESP(plr)
@@ -97,21 +110,20 @@ end
 
 for _,plr in ipairs(Players:GetPlayers()) do
     if plr ~= LP then
-        TrackPlayer(plr)
-        if plr.Character then
-            AddESP(plr)
-        end
+        Track(plr)
+        if plr.Character then AddESP(plr) end
     end
 end
 
 Players.PlayerAdded:Connect(function(plr)
-    if plr ~= LP then
-        TrackPlayer(plr)
-    end
+    if plr ~= LP then Track(plr) end
 end)
 
 Players.PlayerRemoving:Connect(RemoveESP)
 
+-------------------------------------------------
+-- AIMBOT + FOV
+-------------------------------------------------
 local Circle = Drawing.new("Circle")
 Circle.Color = Color3.new(1,1,1)
 Circle.Thickness = 2
@@ -132,9 +144,9 @@ local function GetTarget()
         if IsValidTarget(plr) and plr.Character:FindFirstChild("Head") then
             local pos, on = Camera:WorldToViewportPoint(plr.Character.Head.Position)
             if on then
-                local m = (Vector2.new(pos.X,pos.Y) - c).Magnitude
-                if m < dist then
-                    dist = m
+                local mag = (Vector2.new(pos.X,pos.Y) - c).Magnitude
+                if mag < dist then
+                    dist = mag
                     best = plr.Character.Head
                 end
             end
@@ -143,6 +155,9 @@ local function GetTarget()
     return best
 end
 
+-------------------------------------------------
+-- MOVEMENT
+-------------------------------------------------
 local function ApplyMovement()
     local char = LP.Character
     if not char then return end
@@ -151,7 +166,7 @@ local function ApplyMovement()
 
     hum.UseJumpPower = true
     hum.WalkSpeed = Settings.SpeedEnabled and Settings.Speed or 16
-    hum.JumpPower = Settings.JumpEnabled and Settings.Jump or 150
+    hum.JumpPower = Settings.JumpEnabled and Settings.Jump or 50
 end
 
 LP.CharacterAdded:Connect(function()
@@ -159,6 +174,9 @@ LP.CharacterAdded:Connect(function()
     ApplyMovement()
 end)
 
+-------------------------------------------------
+-- TRIGGERBOT
+-------------------------------------------------
 local function TriggerCheck()
     local c = Center()
     local ray = Camera:ViewportPointToRay(c.X, c.Y)
@@ -177,85 +195,62 @@ local function TriggerCheck()
     return hum and plr and IsValidTarget(plr)
 end
 
+-------------------------------------------------
+-- WALLBANG INDICATOR
+-------------------------------------------------
 local WBText = Drawing.new("Text")
 WBText.Size = 18
 WBText.Center = true
 WBText.Outline = true
 WBText.Font = 2
 WBText.Visible = true
-WBText.Text = "WB: N/A"
-WBText.Color = Color3.fromRGB(255,255,255)
 
-local function GetWallInfo(targetPart)
-    if not targetPart then return true, 0 end
-
+local function GetWallInfo(target)
+    if not target then return false,0 end
     local origin = Camera.CFrame.Position
-    local direction = (targetPart.Position - origin)
+    local dir = (target.Position - origin)
 
     local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Blacklist
     params.FilterDescendantsInstances = {LP.Character}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
 
-    local result = workspace:Raycast(origin, direction, params)
-    if not result then
-        return false, 0
-    end
+    local result = workspace:Raycast(origin, dir, params)
+    if not result then return false,0 end
 
-    local hitInstance = result.Instance
-    local distance = (result.Position - origin).Magnitude
-
-    local isWall = not hitInstance:IsDescendantOf(targetPart.Parent)
-    return isWall, distance
+    local wall = not result.Instance:IsDescendantOf(target.Parent)
+    local dist = (result.Position - origin).Magnitude
+    return wall, dist
 end
 
+-------------------------------------------------
+-- HITBOX
+-------------------------------------------------
 local OriginalSizes = {}
 
-local function SetHitbox(plr, size)
+local function ApplyHitbox(plr, scale)
     if not plr.Character then return end
-    local parts = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
-    for _, partName in ipairs(parts) do
-        local part = plr.Character:FindFirstChild(partName)
-        if part and part:IsA("BasePart") then
-            if not OriginalSizes[plr] then OriginalSizes[plr] = {} end
-            if not OriginalSizes[plr][partName] then
-                OriginalSizes[plr][partName] = part.Size
-            end
-            part.Size = OriginalSizes[plr][partName] * size
+    for _,name in ipairs({"Head","HumanoidRootPart"}) do
+        local part = plr.Character:FindFirstChild(name)
+        if part then
+            OriginalSizes[plr] = OriginalSizes[plr] or {}
+            OriginalSizes[plr][name] = OriginalSizes[plr][name] or part.Size
+            part.Size = OriginalSizes[plr][name] * scale
         end
     end
 end
 
 local function ResetHitbox(plr)
-    if not plr.Character or not OriginalSizes[plr] then return end
-    for partName, size in pairs(OriginalSizes[plr]) do
-        local part = plr.Character:FindFirstChild(partName)
-        if part and part:IsA("BasePart") then
-            part.Size = size
-        end
+    if not OriginalSizes[plr] or not plr.Character then return end
+    for name,size in pairs(OriginalSizes[plr]) do
+        local part = plr.Character:FindFirstChild(name)
+        if part then part.Size = size end
     end
     OriginalSizes[plr] = nil
 end
 
-local function ApplyHitboxes(enabled, size)
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and IsValidTarget(plr) then
-            if enabled then
-                SetHitbox(plr, size)
-            else
-                ResetHitbox(plr)
-            end
-            plr.CharacterAdded:Connect(function()
-                task.wait(0.2)
-                if enabled then
-                    SetHitbox(plr, size)
-                else
-                    ResetHitbox(plr)
-                end
-            end)
-        end
-    end
-end
-
+-------------------------------------------------
+-- MAIN LOOP
+-------------------------------------------------
 RunService.RenderStepped:Connect(function()
     Circle.Position = Center()
     Circle.Radius = Settings.FOV
@@ -279,136 +274,53 @@ RunService.RenderStepped:Connect(function()
 
     if Settings.Noclip and LP.Character then
         for _,p in ipairs(LP.Character:GetDescendants()) do
-            if p:IsA("BasePart") then
-                p.CanCollide = false
-            end
+            if p:IsA("BasePart") then p.CanCollide = false end
         end
     end
 
     ApplyMovement()
 
-    local target = GetTarget()
-    WBText.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2 + 40)
-    if target then
-        local wall, dist = GetWallInfo(target)
+    local t = GetTarget()
+    WBText.Position = Center() + Vector2.new(0,40)
+    if t then
+        local wall, dist = GetWallInfo(t)
         if wall then
-            WBText.Text = "WB: NO | Dist: "..math.floor(dist).." studs"
+            WBText.Text = "WALL | "..math.floor(dist).." studs"
             WBText.Color = Color3.fromRGB(255,80,80)
         else
-            WBText.Text = "WB: YES"
+            WBText.Text = "CLEAR"
             WBText.Color = Color3.fromRGB(80,255,80)
         end
     else
-        WBText.Text = "WB: N/A"
+        WBText.Text = "N/A"
         WBText.Color = Color3.fromRGB(255,255,255)
     end
 end)
 
-ESPTab:CreateToggle({
-    Name = "ESP / Chams",
-    Callback = function(v)
-        Settings.ESP = v
+-------------------------------------------------
+-- UI
+-------------------------------------------------
+ESPTab:CreateToggle({Name="ESP", Callback=function(v) Settings.ESP=v end})
+AimTab:CreateToggle({Name="Aimbot (Hold RMB)", Callback=function(v) Settings.Aimbot=v end})
+AimTab:CreateToggle({Name="Triggerbot", Callback=function(v) Settings.Triggerbot=v end})
+AimTab:CreateToggle({Name="Team Check", CurrentValue=true, Callback=function(v) Settings.TeamCheck=v end})
+AimTab:CreateToggle({Name="Friend Check", CurrentValue=true, Callback=function(v) Settings.FriendCheck=v end})
+AimTab:CreateSlider({Name="FOV", Range={50,400}, Increment=1, CurrentValue=150, Callback=function(v) Settings.FOV=v end})
+AimTab:CreateSlider({Name="Smooth", Range={0.05,0.5}, Increment=0.05, CurrentValue=0.2, Callback=function(v) Settings.Smooth=v end})
+
+MiscTab:CreateToggle({Name="Speed Boost", Callback=function(v) Settings.SpeedEnabled=v end})
+MiscTab:CreateSlider({Name="Speed", Range={16,250}, Increment=1, CurrentValue=16, Callback=function(v) Settings.Speed=v end})
+MiscTab:CreateToggle({Name="Jump Boost", Callback=function(v) Settings.JumpEnabled=v end})
+MiscTab:CreateSlider({Name="Jump Power", Range={50,150}, Increment=1, CurrentValue=50, Callback=function(v) Settings.Jump=v end})
+MiscTab:CreateToggle({Name="Noclip", Callback=function(v) Settings.Noclip=v end})
+MiscTab:CreateToggle({
+    Name="Hitbox",
+    Callback=function(v)
+        Settings.HitboxEnabled=v
         for _,plr in ipairs(Players:GetPlayers()) do
-            AddESP(plr)
+            if plr~=LP and IsValidTarget(plr) then
+                if v then ApplyHitbox(plr,2) else ResetHitbox(plr) end
+            end
         end
-    end
-})
-
-AimTab:CreateToggle({
-    Name = "Aimbot (Hold RMB)",
-    Callback = function(v)
-        Settings.Aimbot = v
-    end
-})
-
-AimTab:CreateToggle({
-    Name = "Triggerbot",
-    Callback = function(v)
-        Settings.Triggerbot = v
-    end
-})
-
-AimTab:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = true,
-    Callback = function(v)
-        Settings.TeamCheck = v
-    end
-})
-
-AimTab:CreateToggle({
-    Name = "Friend Check",
-    CurrentValue = true,
-    Callback = function(v)
-        Settings.FriendCheck = v
-    end
-})
-
-AimTab:CreateSlider({
-    Name = "FOV",
-    Range = {50,400},
-    Increment = 1,
-    CurrentValue = 150,
-    Callback = function(v)
-        Settings.FOV = v
-    end
-})
-
-AimTab:CreateSlider({
-    Name = "Smoothing",
-    Range = {0.05,0.5},
-    Increment = 0.05,
-    CurrentValue = 0.2,
-    Callback = function(v)
-        Settings.Smooth = v
-    end
-})
-
-MiscTab:CreateToggle({
-    Name = "Speed Boost",
-    Callback = function(v)
-        Settings.SpeedEnabled = v
-    end
-})
-
-MiscTab:CreateSlider({
-    Name = "Speed",
-    Range = {16,250},
-    Increment = 1,
-    CurrentValue = 16,
-    Callback = function(v)
-        Settings.Speed = v
-    end
-})
-
-MiscTab:CreateToggle({
-    Name = "Jump Boost",
-    Callback = function(v)
-        Settings.JumpEnabled = v
-    end
-})
-
-MiscTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {50,150},
-    Increment = 1,
-    CurrentValue = 50,
-    Callback = function(v)
-        Settings.Jump = v
-    end
-})
-
-MiscTab:CreateToggle({
-    Name = "Noclip",
-    Callback = function(v)
-        Settings.Noclip = v
-    end
-})
-
-MiscTab:CreateToggle({
-    Name = "Hitbox Enlargement",
-    Callback = function(v)
-        Settings.HitboxEnabled = v
-        ApplyHitboxes(v, 2)
     end
 })
