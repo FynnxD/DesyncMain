@@ -14,10 +14,10 @@ local LP = Players.LocalPlayer
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "HyroxaVersion0.9.9",
-    LoadingTitle = "Beta0.9.9",
-    LoadingSubtitle = "FirstBetaVersion",
-    ConfigurationSaving = { Enabled = false }
+    Name = "HyroxaVersion1.2.1",
+    LoadingTitle = "FullVersion1.2.1",
+    LoadingSubtitle = "FirstFullVersion",
+    ConfigurationSaving = { Enabled = true }
 })
 
 local ESPTab  = Window:CreateTab("ESP", 4483362458)
