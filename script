@@ -1,4 +1,6 @@
+--==============================
 -- SERVICES
+--==============================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -6,9 +8,9 @@ local Camera = workspace.CurrentCamera
 local VIM = game:GetService("VirtualInputManager")
 local LP = Players.LocalPlayer
 
--------------------------------------------------
+--==============================
 -- RAYFIELD
--------------------------------------------------
+--==============================
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
@@ -22,9 +24,9 @@ local ESPTab  = Window:CreateTab("ESP", 4483362458)
 local AimTab  = Window:CreateTab("Aimbot", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
--------------------------------------------------
+--==============================
 -- SETTINGS
--------------------------------------------------
+--==============================
 local Settings = {
     ESP = false,
     Aimbot = false,
@@ -45,9 +47,9 @@ local Settings = {
     HitboxEnabled = false
 }
 
--------------------------------------------------
+--==============================
 -- TARGET CHECK
--------------------------------------------------
+--==============================
 local function IsValidTarget(plr)
     if not plr or plr == LP then return false end
     if not plr.Character then return false end
@@ -71,9 +73,9 @@ local function IsValidTarget(plr)
     return true
 end
 
--------------------------------------------------
+--==============================
 -- ESP
--------------------------------------------------
+--==============================
 local Highlights = {}
 
 local function RemoveESP(plr)
@@ -121,9 +123,9 @@ end)
 
 Players.PlayerRemoving:Connect(RemoveESP)
 
--------------------------------------------------
+--==============================
 -- AIMBOT + FOV
--------------------------------------------------
+--==============================
 local Circle = Drawing.new("Circle")
 Circle.Color = Color3.new(1,1,1)
 Circle.Thickness = 2
@@ -155,9 +157,9 @@ local function GetTarget()
     return best
 end
 
--------------------------------------------------
+--==============================
 -- MOVEMENT
--------------------------------------------------
+--==============================
 local function ApplyMovement()
     local char = LP.Character
     if not char then return end
@@ -174,9 +176,9 @@ LP.CharacterAdded:Connect(function()
     ApplyMovement()
 end)
 
--------------------------------------------------
+--==============================
 -- TRIGGERBOT
--------------------------------------------------
+--==============================
 local function TriggerCheck()
     local c = Center()
     local ray = Camera:ViewportPointToRay(c.X, c.Y)
@@ -195,9 +197,9 @@ local function TriggerCheck()
     return hum and plr and IsValidTarget(plr)
 end
 
--------------------------------------------------
+--==============================
 -- WALLBANG INDICATOR
--------------------------------------------------
+--==============================
 local WBText = Drawing.new("Text")
 WBText.Size = 18
 WBText.Center = true
@@ -222,9 +224,9 @@ local function GetWallInfo(target)
     return wall, dist
 end
 
--------------------------------------------------
--- HITBOX
--------------------------------------------------
+--==============================
+-- HITBOX (NORMAL)
+--==============================
 local OriginalSizes = {}
 
 local function ApplyHitbox(plr, scale)
@@ -248,14 +250,50 @@ local function ResetHitbox(plr)
     OriginalSizes[plr] = nil
 end
 
--------------------------------------------------
+--==============================
+-- HITBOX (UNSICHTBAR)
+--==============================
+local InvisibleHitbox = {
+    Enabled = false,
+    Size = 50,
+    FriendCheck = true
+}
+
+local FriendNames = {}
+
+local function IsFriend(player)
+    return FriendNames[player.Name] == true
+end
+
+local function UpdateInvisibleHitbox(player)
+    if player == LP then return end
+    if not player.Character then return end
+
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+
+    if InvisibleHitbox.Enabled and not (InvisibleHitbox.FriendCheck and IsFriend(player)) then
+        head.Size = Vector3.new(InvisibleHitbox.Size, InvisibleHitbox.Size, InvisibleHitbox.Size)
+        head.Transparency = 1
+        head.CanCollide = false
+        head.Massless = true
+    else
+        head.Size = Vector3.new(2,1,1)
+        head.Transparency = 0
+        head.CanCollide = true
+        head.Massless = false
+    end
+end
+
+--==============================
 -- MAIN LOOP
--------------------------------------------------
+--==============================
 RunService.RenderStepped:Connect(function()
     Circle.Position = Center()
     Circle.Radius = Settings.FOV
     Circle.Visible = Settings.Aimbot
 
+    -- Aimbot
     if Settings.Aimbot and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
         local t = GetTarget()
         if t then
@@ -266,20 +304,24 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- Triggerbot
     if Settings.Triggerbot and TriggerCheck() then
         VIM:SendMouseButtonEvent(0,0,0,true,game,0)
         task.wait(0.01)
         VIM:SendMouseButtonEvent(0,0,0,false,game,0)
     end
 
+    -- Noclip
     if Settings.Noclip and LP.Character then
         for _,p in ipairs(LP.Character:GetDescendants()) do
             if p:IsA("BasePart") then p.CanCollide = false end
         end
     end
 
+    -- Movement
     ApplyMovement()
 
+    -- Wallbang Text
     local t = GetTarget()
     WBText.Position = Center() + Vector2.new(0,40)
     if t then
@@ -295,12 +337,18 @@ RunService.RenderStepped:Connect(function()
         WBText.Text = "N/A"
         WBText.Color = Color3.fromRGB(255,255,255)
     end
+
+    -- Invisible Hitbox Update
+    for _,plr in ipairs(Players:GetPlayers()) do
+        UpdateInvisibleHitbox(plr)
+    end
 end)
 
--------------------------------------------------
+--==============================
 -- UI
--------------------------------------------------
+--==============================
 ESPTab:CreateToggle({Name="ESP", Callback=function(v) Settings.ESP=v end})
+
 AimTab:CreateToggle({Name="Aimbot (Hold RMB)", Callback=function(v) Settings.Aimbot=v end})
 AimTab:CreateToggle({Name="Triggerbot", Callback=function(v) Settings.Triggerbot=v end})
 AimTab:CreateToggle({Name="Team Check", CurrentValue=true, Callback=function(v) Settings.TeamCheck=v end})
@@ -313,6 +361,8 @@ MiscTab:CreateSlider({Name="Speed", Range={16,250}, Increment=1, CurrentValue=16
 MiscTab:CreateToggle({Name="Jump Boost", Callback=function(v) Settings.JumpEnabled=v end})
 MiscTab:CreateSlider({Name="Jump Power", Range={50,150}, Increment=1, CurrentValue=50, Callback=function(v) Settings.Jump=v end})
 MiscTab:CreateToggle({Name="Noclip", Callback=function(v) Settings.Noclip=v end})
+
+-- Normale Hitbox Toggle
 MiscTab:CreateToggle({
     Name="Hitbox",
     Callback=function(v)
@@ -322,5 +372,22 @@ MiscTab:CreateToggle({
                 if v then ApplyHitbox(plr,2) else ResetHitbox(plr) end
             end
         end
+    end
+})
+
+-- Invisible Hitbox UI
+MiscTab:CreateToggle({
+    Name = "Invisible Hitbox",
+    Callback = function(v)
+        InvisibleHitbox.Enabled = v
+    end
+})
+MiscTab:CreateSlider({
+    Name = "Hitbox Size",
+    Range = {10,100},
+    Increment = 1,
+    CurrentValue = InvisibleHitbox.Size,
+    Callback = function(v)
+        InvisibleHitbox.Size = v
     end
 })
