@@ -2,20 +2,27 @@
 	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
 ]]
 local hotkey = _G.desyncHotkey or Enum.KeyCode.F1
+local autoHotkey5s = Enum.KeyCode.F2  -- F2 für 5 Sekunden
+local autoHotkey2s = Enum.KeyCode.F3  -- F3 für 2 Sekunden
 
 local uis = game:GetService("UserInputService")
 local lp = game.Players.LocalPlayer
-local starterGui = game:GetService("StarterGui") -- Wird für die Notification benötigt
+local starterGui = game:GetService("StarterGui")
 local desyncActive = false
+local autoDesyncActive = false 
+local currentLoopTime = 5      
 local mainCharacter = nil
 local deathConnections = {}
 local activeEffects = {}
 
--- NEU: Roblox Notification beim Ausführen des Scripts
+-- Speichert den Namen des aktuell aktiven Modus ("Normal", "5s Loop" oder "2s Loop")
+local activeModeName = "None"
+
+-- Start-Notification
 starterGui:SetCore("SendNotification", {
 	Title = "Script Loaded!";
-	Text = "Press F1 for Desync\nMade BY fynn_xD";
-	Duration = 5; -- Bleibt für 5 Sekunden sichtbar
+	Text = "Made by Fynn_xD/Press F1 for desync\nF2 for every 5 second Desync\nF3 for Every 2 second desync";
+	Duration = 7;
 })
 
 -- Hilfsfunktion zum Erstellen des cleanen Outline- und White-Effects
@@ -56,7 +63,49 @@ local function removeEffects()
 	activeEffects = {}
 end
 
-function deactivate()
+-- Aktiviert den Desync
+local function activate(suppressNotification)
+	if desyncActive then return end
+	desyncActive = true
+	mainCharacter = lp.Character
+	local oldArchivable = mainCharacter.Archivable
+	mainCharacter.Archivable = true
+	local clone = mainCharacter:Clone()
+	mainCharacter.Archivable = oldArchivable
+	clone.Parent = game.Workspace
+	local oldctype = game.Workspace.CurrentCamera.CameraType
+	game.Workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+	task.wait()
+	lp.Character = clone
+	game.Workspace.CurrentCamera.CameraSubject = clone.Humanoid
+	game.Workspace.CurrentCamera.CameraType = oldctype
+	clone.Animate.Enabled = false
+	clone.Animate.Enabled = true
+	
+	if mainCharacter and mainCharacter:FindFirstChild("HumanoidRootPart") then
+		mainCharacter.HumanoidRootPart.Anchored = true
+		createCleanEffect(mainCharacter)
+	end
+
+	if not suppressNotification then
+		starterGui:SetCore("SendNotification", {
+			Title = "Desync State";
+			Text = "Desync Enabled!";
+			Duration = 2;
+		})
+	end
+	
+	table.insert(deathConnections, mainCharacter.Humanoid.Died:Connect(function()
+		deactivate()
+	end))
+	table.insert(deathConnections, clone.Humanoid.Died:Connect(function()
+		deactivate()
+	end))
+end
+
+-- Deaktiviert den Desync
+function deactivate(suppressNotification)
+	if not desyncActive then return end
 	desyncActive = false
 	
 	for i, connection in pairs(deathConnections) do
@@ -70,51 +119,142 @@ function deactivate()
 		mainCharacter.HumanoidRootPart.Anchored = false
 	end
 	
-	mainCharacter.HumanoidRootPart.CFrame = lp.Character.HumanoidRootPart.CFrame
-	lp.Character:Destroy()
+	if lp.Character and mainCharacter then
+		mainCharacter.HumanoidRootPart.CFrame = lp.Character.HumanoidRootPart.CFrame
+		lp.Character:Destroy()
+	end
+	
 	local oldctype = game.Workspace.CurrentCamera.CameraType
 	game.Workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
 	task.wait()
 	lp.Character = mainCharacter
-	game.Workspace.CurrentCamera.CameraSubject = mainCharacter.Humanoid
+	if mainCharacter and mainCharacter:FindFirstChild("Humanoid") then
+		game.Workspace.CurrentCamera.CameraSubject = mainCharacter.Humanoid
+	end
 	game.Workspace.CurrentCamera.CameraType = oldctype
-	mainCharacter.Animate.Enabled = false
-	mainCharacter.Animate.Enabled = true
+	if mainCharacter and mainCharacter:FindFirstChild("Animate") then
+		mainCharacter.Animate.Enabled = false
+		mainCharacter.Animate.Enabled = true
+	end
+
+	if not suppressNotification then
+		starterGui:SetCore("SendNotification", {
+			Title = "Desync State";
+			Text = "Desync Disabled!";
+			Duration = 2;
+		})
+	end
 end
 
+-- Präzise Wartefunktion
+local function dynamicWait(seconds)
+	local steps = seconds / 0.1
+	for i = 1, steps do
+		if not autoDesyncActive then return false end
+		task.wait(0.1)
+	end
+	return true
+end
 
+-- Startet die automatischen Loops
+local function startAutoLoop(waitTime)
+	autoDesyncActive = true
+	currentLoopTime = waitTime
+	
+	task.spawn(function()
+		while autoDesyncActive do
+			activate(true)
+			if not dynamicWait(currentLoopTime) then break end
+			deactivate(true)
+			task.wait(0.1)
+		end
+	end)
+end
+
+-- Zeigt die Fehlermeldung an, wenn bereits ein Desync läuft
+local function showAlreadyEnabledWarning()
+	starterGui:SetCore("SendNotification", {
+		Title = "Warning!";
+		Text = "Desync " .. activeModeName .. " Already Enabled. Disable it First.";
+		Duration = 4;
+	})
+end
+
+-- Hotkey Abfragen
 uis.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed and input.KeyCode == hotkey then
+	if gameProcessed then return end
+	
+	-- F1: Normaler Desync
+	if input.KeyCode == hotkey then
 		if desyncActive then
-			deactivate()
-		else
-			desyncActive = true
-			mainCharacter = lp.Character
-			local oldArchivable = mainCharacter.Archivable
-			mainCharacter.Archivable = true
-			local clone = mainCharacter:Clone()
-			mainCharacter.Archivable = oldArchivable
-			clone.Parent = game.Workspace
-			local oldctype = game.Workspace.CurrentCamera.CameraType
-			game.Workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
-			task.wait()
-			lp.Character = clone
-			game.Workspace.CurrentCamera.CameraSubject = clone.Humanoid
-			game.Workspace.CurrentCamera.CameraType = oldctype
-			clone.Animate.Enabled = false
-			clone.Animate.Enabled = true
-			
-			if mainCharacter and mainCharacter:FindFirstChild("HumanoidRootPart") then
-				mainCharacter.HumanoidRootPart.Anchored = true
-				createCleanEffect(mainCharacter)
+			-- Wenn der normale Desync an ist, schalten wir ihn aus
+			if activeModeName == "Normal" then
+				activeModeName = "None"
+				deactivate(false)
+			else
+				-- Wenn F1 gedrückt wird, aber ein Loop (F2/F3) läuft, blockieren
+				showAlreadyEnabledWarning()
 			end
-			
-			table.insert(deathConnections, mainCharacter.Humanoid.Died:Connect(function()
-				deactivate()
-			end))
-			table.insert(deathConnections, clone.Humanoid.Died:Connect(function()
-				deactivate()
-			end))
+		else
+			-- Aktivieren, da noch nichts läuft
+			activeModeName = "Normal"
+			activate(false)
+		end
+		
+	-- F2: 5-Sekunden-Loop
+	elseif input.KeyCode == autoHotkey5s then
+		if autoDesyncActive and currentLoopTime == 5 then
+			-- Wenn genau dieser Loop läuft: Ausschalten
+			autoDesyncActive = false
+			activeModeName = "None"
+			deactivate(true)
+			starterGui:SetCore("SendNotification", {
+				Title = "Auto Desync";
+				Text = "5s Loop Stopped";
+				Duration = 3;
+			})
+		else
+			-- Wenn IRGENDETWAS anderes bereits aktiv ist, blockieren
+			if desyncActive then
+				showAlreadyEnabledWarning()
+			else
+				-- Starten
+				activeModeName = "5s Loop"
+				starterGui:SetCore("SendNotification", {
+					Title = "Auto Desync";
+					Text = "5s Loop Started";
+					Duration = 3;
+				})
+				startAutoLoop(5)
+			end
+		end
+		
+	-- F3: 2-Sekunden-Loop
+	elseif input.KeyCode == autoHotkey2s then
+		if autoDesyncActive and currentLoopTime == 2 then
+			-- Wenn genau dieser Loop läuft: Ausschalten
+			autoDesyncActive = false
+			activeModeName = "None"
+			deactivate(true)
+			starterGui:SetCore("SendNotification", {
+				Title = "Auto Desync";
+				Text = "2s Loop Stopped";
+				Duration = 3;
+			})
+		else
+			-- Wenn IRGENDETWAS anderes bereits aktiv ist, blockieren
+			if desyncActive then
+				showAlreadyEnabledWarning()
+			else
+				-- Starten
+				activeModeName = "2s Loop"
+				starterGui:SetCore("SendNotification", {
+					Title = "Auto Desync";
+					Text = "2s Loop Started";
+					Duration = 3;
+				})
+				startAutoLoop(2)
+			end
 		end
 	end
 end)
